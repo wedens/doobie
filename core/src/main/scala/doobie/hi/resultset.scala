@@ -95,14 +95,14 @@ object resultset {
    * @group Updating
    */
   def update[A](n: Int, a:A)(implicit A: Composite[A]): ResultSetIO[Unit] =
-    A.update(n, a)
+    A.update(a).eval(n)
 
   /**
    * Updates a value of type `A` starting at column 1.
    * @group Updating
    */
   def update[A](a: A)(implicit A: Composite[A]): ResultSetIO[Unit] =
-    A.update(1, a)
+    A.update(a).eval(1)
 
 
   /**

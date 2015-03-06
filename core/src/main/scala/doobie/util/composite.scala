@@ -28,15 +28,13 @@ object composite {
     val set: A => StateT[PS.PreparedStatementIO, Int, Unit]
     val update: A => StateT[RS.ResultSetIO, Int, Unit]
     val get: StateT[RS.ResultSetIO, Int, A]
-    val length: Int
     val meta: List[(Meta[_], NullabilityKnown)]
     final def xmap[B](f: A => B, g: B => A): Composite[B] =
       new Composite[B] {
         val set = (b: B) => c.set(g(b))
         val update = (b: B) => c.update(g(b))
         val get = c.get map f
-        val length = c.length
-        val meta   = c.meta
+        val meta = c.meta
       }
   }
 
@@ -55,7 +53,6 @@ object composite {
         val set = (a: A) => StateT[PS.PreparedStatementIO, Int, Unit](s => A.set(s, a) map ((s + 1, _)))
         val update = (a: A) => StateT[RS.ResultSetIO, Int, Unit](s => A.update(s, a).map((s + 1, _)))
         val get = StateT[RS.ResultSetIO, Int, A](s => A.get(s).map((s + 1, _)))
-        val length = 1
         val meta = List(A.meta)
       }
   }
@@ -91,7 +88,6 @@ object composite {
         val set = (l: H :: T) => H.set(l.head) >> T.set(l.tail)
         val update = (l: H :: T) => H.update(l.head) >> T.update(l.tail)
         val get = H.get >>= (h => T.get map (t => (h :: t)))
-        val length = H.length + T.length
         val meta = H.meta ++ T.meta
       }
 
@@ -100,7 +96,6 @@ object composite {
         val set = (_: HNil) => StateT[PS.PreparedStatementIO, Int, Unit](s => (s, ()).point[PS.PreparedStatementIO])
         val update = (_: HNil) => StateT[RS.ResultSetIO, Int, Unit](s => (s, ()).point[RS.ResultSetIO])
         val get = StateT[RS.ResultSetIO, Int, HNil](s => (s, HNil : HNil).point[RS.ResultSetIO])
-        val length = 0
         val meta = Nil
       }
   }

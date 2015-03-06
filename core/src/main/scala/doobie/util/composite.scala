@@ -22,12 +22,15 @@ import java.sql.ParameterMetaData
  * Module defining a typeclass for composite database types (those that can map to multiple columns).
  */
 object composite {
+  // contexts for current index
+  type PreparedStatementContext[A] = StateT[PS.PreparedStatementIO, Int, A]
+  type ResultSetContext[A] = StateT[RS.ResultSetIO, Int, A]
 
   @implicitNotFound("Could not find or construct Composite[${A}].")
   trait Composite[A] { c =>
-    val set: A => StateT[PS.PreparedStatementIO, Int, Unit]
-    val update: A => StateT[RS.ResultSetIO, Int, Unit]
-    val get: StateT[RS.ResultSetIO, Int, A]
+    val set: A => PreparedStatementContext[Unit]
+    val update: A => ResultSetContext[Unit]
+    val get: ResultSetContext[A]
     val meta: List[(Meta[_], NullabilityKnown)]
     final def xmap[B](f: A => B, g: B => A): Composite[B] =
       new Composite[B] {
@@ -93,9 +96,9 @@ object composite {
 
     implicit val hnilComposite: Composite[HNil] =
       new Composite[HNil] {
-        val set = (_: HNil) => StateT[PS.PreparedStatementIO, Int, Unit](s => (s, ()).point[PS.PreparedStatementIO])
-        val update = (_: HNil) => StateT[RS.ResultSetIO, Int, Unit](s => (s, ()).point[RS.ResultSetIO])
-        val get = StateT[RS.ResultSetIO, Int, HNil](s => (s, HNil : HNil).point[RS.ResultSetIO])
+        val set = (_: HNil) => ().point[PreparedStatementContext]
+        val update = (_: HNil) => ().point[ResultSetContext]
+        val get = (HNil : HNil).point[ResultSetContext]
         val meta = Nil
       }
   }

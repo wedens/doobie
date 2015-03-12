@@ -30,7 +30,7 @@ object FirstExample extends SafeApp {
   )
 
   // Our example database action
-  def examples: ConnectionIO[String] = 
+  def examples: ConnectionIO[String] =
     for {
 
       // Create and populate
@@ -53,6 +53,11 @@ object FirstExample extends SafeApp {
       // Read into a vector this time, with some stream processing
       v <- DAO.coffeesLessThan(9.0).take(2).map(p => (p._1 + "*" + p._2)).vector
       _ <- putStrLn(v.toString)
+
+      f1 <- DAO.filter(9.0.some, NonEmptyList(49)).vector
+      _ <- putStrLn(f1.toString)
+      f2 <- DAO.filter(none, NonEmptyList(49, 101)).vector
+      _ <- putStrLn(f2.toString)
 
     } yield "All done!"
 
@@ -80,13 +85,27 @@ object FirstExample extends SafeApp {
     def allCoffees: Process[ConnectionIO, Coffee] =
       Queries.allCoffees.process
 
-    def create: ConnectionIO[Unit] = 
+    def create: ConnectionIO[Unit] =
       Queries.create.run.void
+
+    def filter(p: Option[Double], sup: NonEmptyList[Int]) =
+      Queries.filter(p, sup).process
 
   }
 
   /** Queries module contains "raw" Query/Update values. */
+  import doobie.util.composite.Composite._
   object Queries {
+    def filter(price: Option[Double], suppliers: NonEmptyList[Int]): Query0[(String, String)] = {
+      (qf"""
+      SELECT cof_name, sup_name
+      FROM coffees JOIN suppliers ON coffees.sup_id = suppliers.sup_id
+      WHERE 1 = 1
+      """ +
+      qf" AND coffees.sup_id".in(suppliers) +
+      price.map(p => qf" AND price <".bind(p)).getOrElse(QueryFragment.empty))
+      .query[(String, String)]
+    }
 
     def coffeesLessThan(price: Double): Query0[(String, String)] =
       sql"""
@@ -104,7 +123,7 @@ object FirstExample extends SafeApp {
     def allCoffees[A]: Query0[Coffee] =
       sql"SELECT cof_name, sup_id, price, sales, total FROM coffees".query[Coffee]
 
-    def create: Update0 = 
+    def create: Update0 =
       sql"""
 
         CREATE TABLE suppliers (
@@ -113,7 +132,7 @@ object FirstExample extends SafeApp {
           street   VARCHAR NOT NULL,
           city     VARCHAR NOT NULL,
           state    VARCHAR NOT NULL,
-          zip      VARCHAR NOT NULL        
+          zip      VARCHAR NOT NULL
         );
 
         CREATE TABLE coffees (
@@ -129,7 +148,7 @@ object FirstExample extends SafeApp {
 
       """.update
 
-  } 
+  }
 
   // Lifted println
   def putStrLn(s: => String): ConnectionIO[Unit] =

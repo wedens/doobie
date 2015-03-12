@@ -11,6 +11,8 @@ import doobie.free.preparedstatement.PreparedStatementIO
 import doobie.free.{ preparedstatement => PS }
 import doobie.free.{ resultset => RS }
 
+import doobie.util.query._
+
 import scala.annotation.implicitNotFound
 
 import scalaz._, Scalaz._
@@ -58,6 +60,70 @@ object composite {
         val length = 1
         val meta = List(A.meta)
       }
+
+
+trait ConstAtom {
+  type Type
+  val atom: Atom[Type]
+  val value: Type
+}
+
+object ConstAtom {
+  implicit def fromAtom[A](a: A)(implicit aat: Atom[A]): ConstAtom =
+    new ConstAtom {
+      type Type = A
+      val atom = aat
+      val value = a
+    }
+}
+
+def constAtomListComposite(cal: List[ConstAtom]): Composite[List[ConstAtom]] =
+  new Composite[List[ConstAtom]] {
+    val set = (i: Int, l: List[ConstAtom]) => (cal zip Stream.from(i)).map {
+      case (x, n) => x.atom.set(n, x.value)
+    }.sequence.void
+    val update = (i: Int, l: List[ConstAtom]) => (cal zip Stream.from(i)).map {
+      case (x, n) => x.atom.update(n, x.value)
+    }.sequence.void
+    val meta = cal.map(_.atom.meta)
+    val get = (i: Int) => nil[ConstAtom].point[RS.ResultSetIO] // impossible
+    val length = cal.length
+  }
+
+//TODO: use DList
+case class QueryFragment(sql: Cord, params: List[ConstAtom]) {
+  def +(other: QueryFragment): QueryFragment = copy(
+    sql = sql ++ other.sql,
+    params = params ++ other.params
+  )
+
+  def bind[A: Atom](a: A): QueryFragment = copy(
+    sql = sql :+ " ?",
+    params = params :+ ConstAtom.fromAtom[A](a)
+  )
+
+  def in[A: Atom](as: NonEmptyList[A]): QueryFragment = copy(
+    sql = sql :+ s" IN(${List.fill(as.size)("?").mkString(",")})",
+    params = params ++ as.map(ConstAtom.fromAtom[A](_)).toList
+  )
+
+  def query[O: Composite]: Query0[O] = {
+    implicit val paramsComposite: Composite[List[ConstAtom]] = constAtomListComposite(params)
+    Predef.println(sql.toString)
+    Predef.println(params.map(_.value))
+    Query[List[ConstAtom], O](sql.toString, none).toQuery0(params)
+  }
+}
+
+object QueryFragment {
+  val empty: QueryFragment = QueryFragment(Cord.empty, nil)
+}
+
+implicit class QueryFragmentInterpolation(val sc: StringContext) {
+  def qf() = QueryFragment(sc.parts.mkString, nil)
+  def qf[A: Atom](a: A) = QueryFragment(sc.parts.mkString("?"), a :: Nil)
+}
+
   }
 
   // N.B. we're separating this out in order to make the atom ~> composite derivation higher
